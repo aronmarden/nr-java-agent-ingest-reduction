@@ -1,0 +1,305 @@
+# ==================================================================================
+# New Relic Java Agent Configuration - Optimized for Ingest Reduction
+# ==================================================================================
+# This configuration file is organized from HIGHEST to LOWEST impact on ingest reduction.
+# Each setting includes comments explaining the impact on data volume.
+#
+# Configuration format: YAML
+# Documentation: https://docs.newrelic.com/docs/apm/agents/java-agent/configuration/
+# ==================================================================================
+
+# ==================================================================================
+# ESTIMATED TOTAL INGEST REDUCTION
+# ==================================================================================
+# By implementing all recommended settings above, you can expect:
+#
+# Conservative Estimate: 40-60% reduction in overall ingest
+# Aggressive Estimate: 60-80% reduction in overall ingest
+#
+# Highest impact areas:
+# 1. Span Events reduction:              30-50% of total ingest
+# 2. Transaction Events reduction:       20-30% of total ingest
+# 3. Application Logging disabled:       10-30% of total ingest
+# 4. Code Level Metrics disabled:        15-25% of total ingest
+# 5. Custom Events reduction:            5-15% of total ingest
+# 6. JFR disabled:                       5-10% of total ingest
+# 7. Other optimizations:                5-10% of total ingest
+#
+# ==================================================================================
+# IMPLEMENTATION NOTES
+# ==================================================================================
+# Key metrics to monitor in New Relic:
+# - Data Management -> Data Ingest
+# - APM -> Transactions (ensure you still see critical transactions)
+# - Distributed Tracing (verify you still have adequate trace samples)
+
+# ================================================================================
+# REQUIRED: Basic Configuration
+# ================================================================================
+
+# Core agent configuration - Required settings
+license_key: 'YOUR_LICENSE_KEY_HERE'
+agent_enabled: true
+app_name: "Your Application Name"
+
+# Security & Naming
+high_security: false
+enable_auto_app_naming: false
+enable_auto_transaction_naming: true
+
+# Connection
+ssl: true
+
+# Agent Logging - Local agent log configuration
+# IMPACT: MINIMAL - Only affects local disk usage
+log_level: info              # Use 'info' not 'debug' or 'finest'
+log_file_count: 1            # Minimize local log files
+log_daily: false             # Don't rotate daily
+log_file_name: STDOUT        # Log to stdout for container environments
+audit_mode: false            # Don't log all data sent to New Relic
+
+# Labels - For organizing and filtering in New Relic UI
+# IMPACT: MINIMAL - Small metadata
+labels:
+  env: prod
+  team: your-team
+  region: us-east-1
+
+# ================================================================================
+# HIGHEST IMPACT: Transaction Events & Sampling
+# ================================================================================
+# These settings have the most significant impact on data ingest volume
+  
+# Transaction Events - Maximum samples stored per harvest cycle (60 seconds)
+# IMPACT: HIGH - Directly limits APM transaction data sent to New Relic
+# Default: 10000 per minute
+# Recommended for reduction: 1000-2000
+# REDUCTION: ~80-90% of transaction event data
+transaction_events:
+  enabled: true
+  max_samples_stored: 2000  # Reducing from 10000 to 2000 = 80% reduction
+
+# Span Events - Distributed tracing span data
+# IMPACT: HIGH - Span events are often the largest contributor to ingest
+# Default: 2000 per minute
+# Recommended for reduction: 1000-2000
+# REDUCTION: Can account for 50-70% of total ingest in distributed systems
+span_events:
+  enabled: true
+  max_samples_stored: 2000  # Controls volume of distributed tracing data
+
+# Custom Events - Application-generated custom events
+# IMPACT: MEDIUM-HIGH - Depends on application usage
+# Default: 30000 per minute
+# Recommended for reduction: 3000-5000
+# REDUCTION: ~83-90% if custom events are heavily used
+custom_insights_events:
+  max_samples_stored: 5000  # Significant reduction from default 30000
+  
+# ================================================================================
+# HIGH IMPACT: Transaction Tracer Limits
+# ================================================================================
+
+# Transaction Segment Limit - Maximum segments per transaction trace
+# IMPACT: HIGH - Limits detail in transaction traces
+# Default: 2000
+# Recommended for reduction: 1000-3000
+# REDUCTION: Reduces transaction trace size by 50%+ in complex transactions
+transaction_tracer:
+  enabled: true
+  transaction_threshold: apdex_f  # Only trace slow transactions
+  record_sql: obfuscated          # Obfuscate SQL to reduce data size
+  log_sql: false                  # Don't log SQL separately
+  stack_trace_threshold: 0.5
+  explain_enabled: true
+  explain_threshold: 0.5
+  segment_limit: 3000             # Reduced from default 2000 for some headroom
+  top_n: 20                       # Only keep top 20 slowest transactions
+
+# Transaction Size Limit - Maximum size of individual transactions
+# IMPACT: MEDIUM-HIGH - Prevents oversized transaction payloads
+# Default: 2000 KB
+# Recommended for reduction: 1000-2000 KB
+# REDUCTION: Truncates large transactions to prevent data spikes
+transaction_size_limit: 2000  # In kilobytes
+  
+# ================================================================================
+# HIGH IMPACT: Feature Toggles
+# ================================================================================
+
+# Java Flight Recorder (JFR) - Advanced monitoring feature
+# IMPACT: HIGH - JFR can generate significant additional data
+# Default: false
+# Recommended: Keep disabled unless specifically needed
+# REDUCTION: Eliminates JFR metric data (can be 10-20% of ingest)
+jfr:
+  enabled: false
+  audit_logging: false
+
+# Application Logging - Log forwarding feature
+# IMPACT: HIGH - Log forwarding can dramatically increase ingest
+# Default: true (in newer agents)
+# Recommended for reduction: disabled
+# REDUCTION: Can reduce ingest by 30-50% if logs are verbose
+application_logging:
+  enabled: false
+  forwarding:
+    enabled: false
+    max_samples_stored: 10000
+  metrics:
+    enabled: false
+  local_decorating:
+    enabled: false
+
+# Code Level Metrics - Method-level instrumentation data
+# IMPACT: HIGH - Adds detailed method metrics to spans and transactions
+# Default: true (in agents v7.11.0+)
+# Recommended for reduction: disabled
+# REDUCTION: Can reduce ingest by 15-25%, especially in microservices
+code_level_metrics:
+  enabled: false  # Disable to reduce metric cardinality and span attributes
+
+# Browser Monitoring - Real User Monitoring injection
+# IMPACT: MEDIUM - RUM data from browser
+# Keep enabled if you need browser insights, disable if not
+# REDUCTION: ~5-15% if disabled
+browser_monitoring:
+  auto_instrument: false  # Set to true only if you need RUM
+
+# ================================================================================
+# MEDIUM IMPACT: Distributed Tracing vs Cross Application Tracing
+# ================================================================================
+
+# Distributed Tracing - Modern tracing approach
+# IMPACT: MEDIUM - More efficient than CAT but still generates span data
+# Note: span_events max_samples_stored (above) is the primary control
+# Keep enabled for visibility, control volume with span_events setting
+distributed_tracing:
+  enabled: true
+  # When enabled, ensure cross_application_tracer is disabled
+
+# Cross Application Tracing - Legacy tracing (deprecated)
+# IMPACT: MEDIUM - Less efficient than distributed tracing
+# Recommended: Keep disabled in favor of distributed_tracing
+cross_application_tracer:
+  enabled: false
+
+# ================================================================================
+# MEDIUM IMPACT: Error Collection
+# ================================================================================
+
+# Error Collector - Exception and error data
+# IMPACT: MEDIUM - Depends on error frequency
+# Recommended: Keep enabled but use filters to ignore expected errors
+# REDUCTION: 10-20% if you ignore common/expected errors
+error_collector:
+  enabled: true
+  # Ignore common errors that don't require attention
+  ignore_classes:
+    - "akka.actor.ActorKilledException"
+    - "java.lang.InterruptedException"
+    - "java.util.concurrent.CancellationException"
+    - "org.springframework.web.client.HttpClientErrorException"
+  ignore_status_codes: "401,404,405"  # Ignore common HTTP errors
+  # Expected errors (logged but not counted as errors)
+  expected_classes:
+    - "com.example.CustomValidationException"
+  expected_status_codes: "400,409"
+  max_stack_trace_lines: 30  # Limit stack trace depth (default: 30)
+
+# ================================================================================
+# MEDIUM IMPACT: Thread Profiler & Sampling
+# ================================================================================
+
+# Thread Profiler - Stack trace sampling
+# IMPACT: MEDIUM - Periodic thread sampling data
+# Default: true
+# Recommended: Can be disabled if not actively debugging
+# REDUCTION: ~5-10% of metric data
+thread_profiler:
+  enabled: false  # Disable unless actively profiling
+
+# ================================================================================
+# MEDIUM IMPACT: Metric Limits & Sampling
+# ================================================================================
+
+# Agent Limits - Control various agent limits
+agent_limits:
+  # Maximum number of unique metric names before aggregation
+  # IMPACT: MEDIUM - Prevents metric explosion
+  # Default: 10000
+  # REDUCTION: Prevents unbounded metric growth
+  max_metric_names: 5000
+  
+  # Maximum transaction segments reported per transaction
+  # Note: This is redundant with transaction_tracer.segment_limit
+  # max_transaction_segments: 3000
+
+# ================================================================================
+# LOW-MEDIUM IMPACT: Instrumentation Control
+# ================================================================================
+
+# Class Transformer - Control which frameworks are instrumented
+# IMPACT: LOW-MEDIUM - Disable unused instrumentation modules
+# Recommended: Disable instrumentation for frameworks you don't use
+# REDUCTION: 5-15% depending on how much instrumentation you disable
+class_transformer:
+  # Example: Disable servlet user instrumentation if not needed
+  com.newrelic.instrumentation.servlet-user:
+    enabled: false
+  # Add other unused instrumentation modules as needed
+  # com.newrelic.instrumentation.kafka-clients-node-metrics-2.0.0:
+  #   enabled: false
+  # com.newrelic.instrumentation.spring-webflux-5.0.0:
+  #   enabled: false
+
+# Attributes - Control which attributes are captured
+# IMPACT: LOW-MEDIUM - Reduces attribute data volume
+# Recommended: Include only necessary attributes
+# REDUCTION: 5-10% if you have many custom attributes
+attributes:
+  enabled: true
+  # Exclude attributes you don't need
+  exclude:
+    - request.parameters.*  # Exclude all request parameters
+    - message.parameters.*  # Exclude message queue parameters
+  # Only include specific attributes you need
+  # include:
+  #   - request.method
+  #   - request.uri
+  
+  # HTTP Attribute Mode - Controls which HTTP attributes are sent
+  # IMPACT: LOW-MEDIUM - Sending both standard and legacy increases ingest
+  # Default: both (sends both standard and legacy HTTP attributes)
+  # Options: standard, legacy, both
+  # Recommended for reduction: standard (only new format attributes)
+  # REDUCTION: ~5-10% by avoiding duplicate HTTP attribute data
+  http_attribute_mode: standard  # Use 'standard' instead of 'both' to reduce duplication
+
+# ================================================================================
+# LOW IMPACT: SQL & Database Tracing
+# ================================================================================
+
+# SQL Trace Configuration
+# IMPACT: LOW - SQL data is typically small
+# Note: Already configured in transaction_tracer above
+# record_sql: obfuscated reduces data size vs 'raw'
+# log_sql: false prevents duplicate logging
+
+# Slow SQL Traces
+# IMPACT: LOW - Only captures slow queries
+# Recommended: Keep enabled for performance insights
+slow_sql:
+  enabled: true
+
+# ================================================================================
+# ADVANCED: Strip Exception Messages (if PCI/PII concerns)
+# ================================================================================
+
+# Strip Exception Messages - Remove sensitive data from exceptions
+# IMPACT: MINIMAL on ingest, but useful for security/compliance
+# Default: false
+strip_exception_messages:
+  enabled: false
+  # Set to true if you need to remove potentially sensitive exception messages
+  # whitelist: []  # Classes whose messages should NOT be stripped
